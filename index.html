@@ -1,0 +1,1077 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Particle Sphere</title>
+
+    <style>
+        :root {
+            --bg: #050505;
+            --text: #f2eee8;
+            --muted: #8c8985;
+            --line: rgba(255, 255, 255, 0.14);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            margin: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: var(--bg);
+            color: var(--text);
+            font-family: Arial, Helvetica, sans-serif;
+        }
+
+        body {
+            position: relative;
+        }
+
+        #webcam {
+            position: fixed;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            opacity: 0;
+            pointer-events: none;
+            transform: scaleX(-1);
+            transition: opacity 0.5s ease;
+            filter: saturate(0.7) contrast(1.1);
+            z-index: 0;
+        }
+
+        body.webcam-visible #webcam {
+            opacity: 0.28;
+        }
+
+        #webcam::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.4);
+        }
+
+        #canvas {
+            position: fixed;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        .overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 2;
+            pointer-events: none;
+        }
+
+        header {
+            position: absolute;
+            top: 30px;
+            left: 34px;
+        }
+
+        h1 {
+            margin: 0;
+            font-family: Georgia, "Times New Roman", serif;
+            font-size: clamp(2rem, 4vw, 4.5rem);
+            font-weight: 400;
+            letter-spacing: -0.06em;
+            line-height: 0.9;
+        }
+
+        .subtitle {
+            margin-top: 12px;
+            color: var(--muted);
+            font-size: 10px;
+            letter-spacing: 0.22em;
+            text-transform: uppercase;
+        }
+
+        .status {
+            position: absolute;
+            top: 34px;
+            right: 34px;
+            display: flex;
+            align-items: center;
+            gap: 9px;
+            color: var(--muted);
+            font-size: 10px;
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
+        }
+
+        .status-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: #555;
+            transition: 0.3s;
+        }
+
+        .status.active .status-dot {
+            background: #d9d2c7;
+            box-shadow: 0 0 14px rgba(255, 255, 255, 0.8);
+        }
+
+        .controls {
+            position: absolute;
+            bottom: 30px;
+            left: 34px;
+            right: 34px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+        }
+
+        .instructions {
+            max-width: 310px;
+            color: var(--muted);
+            font-size: 11px;
+            line-height: 1.8;
+            letter-spacing: 0.04em;
+        }
+
+        .instructions span {
+            color: var(--text);
+        }
+
+        button {
+            pointer-events: auto;
+            border: 1px solid var(--line);
+            background: rgba(10, 10, 10, 0.55);
+            color: var(--text);
+            padding: 13px 18px;
+            font-size: 10px;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            cursor: pointer;
+            backdrop-filter: blur(12px);
+            transition: 0.25s ease;
+        }
+
+        button:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: rgba(255, 255, 255, 0.4);
+        }
+
+        .charge-container {
+            position: fixed;
+            left: 50%;
+            bottom: 38px;
+            transform: translateX(-50%);
+            width: 70px;
+            height: 70px;
+            z-index: 3;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .charge-container.visible {
+            opacity: 1;
+        }
+
+        .charge-ring {
+            position: absolute;
+            inset: 0;
+            border-radius: 50%;
+            background: conic-gradient(rgba(255, 255, 255, 0.9) var(--charge, 0%),
+                    rgba(255, 255, 255, 0.08) var(--charge, 0%));
+            mask: radial-gradient(transparent 58%,
+                    #000 60%);
+            -webkit-mask: radial-gradient(transparent 58%,
+                    #000 60%);
+        }
+
+        .charge-text {
+            position: absolute;
+            inset: 0;
+            display: grid;
+            place-items: center;
+            font-size: 8px;
+            letter-spacing: 0.1em;
+            color: var(--muted);
+        }
+
+        .hint {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: rgba(255, 255, 255, 0.35);
+            font-family: Georgia, serif;
+            font-size: 14px;
+            letter-spacing: 0.08em;
+            transition: opacity 0.5s ease;
+            pointer-events: none;
+            z-index: 2;
+        }
+
+        .hint.hidden {
+            opacity: 0;
+        }
+
+        @media (max-width: 600px) {
+            header {
+                top: 22px;
+                left: 22px;
+            }
+
+            .status {
+                top: 25px;
+                right: 22px;
+            }
+
+            .controls {
+                bottom: 22px;
+                left: 22px;
+                right: 22px;
+            }
+
+            .instructions {
+                font-size: 9px;
+                max-width: 220px;
+            }
+
+            button {
+                padding: 11px 12px;
+                font-size: 8px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <video id="webcam" autoplay muted playsinline></video>
+
+    <canvas id="canvas"></canvas>
+
+    <div class="overlay">
+
+        <header>
+            <h1>Particle<br>Sphere</h1>
+            <div class="subtitle">Gesture / Matter / Motion</div>
+        </header>
+
+        <div class="status" id="status">
+            <div class="status-dot"></div>
+            <span id="statusText">Camera inactive</span>
+        </div>
+
+        <div class="hint" id="hint">
+            Show your hand to begin
+        </div>
+
+        <div class="controls">
+            <div class="instructions">
+                <div><span>ONE HAND</span> — move and rotate</div>
+                <div><span>PINCH</span> — charge / release to explode</div>
+                <div><span>TWO HANDS</span> — spread to grow</div>
+                <div><span>FINGERS</span> — change color</div>
+            </div>
+
+            <button id="cameraButton">
+                Enable Webcam
+            </button>
+        </div>
+
+    </div>
+
+    <div class="charge-container" id="chargeContainer">
+        <div class="charge-ring"></div>
+        <div class="charge-text">CHARGE</div>
+    </div>
+
+    <!-- MediaPipe Hands -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+
+    <script>
+        /*
+         * ============================================================
+         * CONFIGURATION
+         * ============================================================
+         */
+
+        const PARTICLE_COUNT = 3000;
+
+        const canvas = document.getElementById("canvas");
+        const ctx = canvas.getContext("2d");
+
+        const video = document.getElementById("webcam");
+        const cameraButton = document.getElementById("cameraButton");
+
+        const status = document.getElementById("status");
+        const statusText = document.getElementById("statusText");
+
+        const hint = document.getElementById("hint");
+
+        const chargeContainer = document.getElementById("chargeContainer");
+        const chargeRing = document.querySelector(".charge-ring");
+
+        let width = window.innerWidth;
+        let height = window.innerHeight;
+        let dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+        canvas.width = width * dpr;
+        canvas.height = height * dpr;
+        ctx.scale(dpr, dpr);
+
+        /*
+         * ============================================================
+         * PARTICLES
+         * ============================================================
+         */
+
+        const particles = [];
+
+        let sphereRadius = Math.min(width, height) * 0.25;
+        let targetSphereRadius = sphereRadius;
+
+        let rotationX = 0;
+        let rotationY = 0;
+
+        let targetRotationX = 0;
+        let targetRotationY = 0;
+
+        let sphereOffsetX = 0;
+        let sphereOffsetY = 0;
+
+        let targetOffsetX = 0;
+        let targetOffsetY = 0;
+        let explosion = 0;
+        let explosionStrength = 0;
+
+        let currentColor = {
+            h: 210,
+            s: 80,
+            l: 75
+        };
+
+        let targetColor = {
+            h: 210,
+            s: 80,
+            l: 75
+        };
+
+        function random(min, max) {
+            return Math.random() * (max - min) + min;
+        }
+
+        function createParticles() {
+            for (let i = 0; i < PARTICLE_COUNT; i++) {
+
+                /*
+                 * Fibonacci sphere distribution.
+                 * This gives an even distribution of 3000 points.
+                 */
+
+                const y = 1 - (i / (PARTICLE_COUNT - 1)) * 2;
+                const radius = Math.sqrt(1 - y * y);
+
+                const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+                const theta = goldenAngle * i;
+
+                const x = Math.cos(theta) * radius;
+                const z = Math.sin(theta) * radius;
+
+                particles.push({
+                    x,
+                    y,
+                    z,
+
+                    size: random(0.45, 1.6),
+                    alpha: random(0.45, 1),
+
+                    noise: random(0, Math.PI * 2),
+
+                    explosionX: random(-1, 1),
+                    explosionY: random(-1, 1),
+                    explosionZ: random(-1, 1),
+
+                    depth: 0
+                });
+            }
+        }
+
+        createParticles();
+
+        /*
+         * ============================================================
+         * 3D ROTATION
+         * ============================================================
+         */
+
+        function rotatePoint(x, y, z, rx, ry) {
+
+            // Rotate around X
+            const cosX = Math.cos(rx);
+            const sinX = Math.sin(rx);
+
+            let y1 = y * cosX - z * sinX;
+            let z1 = y * sinX + z * cosX;
+
+            // Rotate around Y
+            const cosY = Math.cos(ry);
+            const sinY = Math.sin(ry);
+
+            let x2 = x * cosY + z1 * sinY;
+            let z2 = -x * sinY + z1 * cosY;
+
+            return {
+                x: x2,
+                y: y1,
+                z: z2
+            };
+        }
+
+        /*
+         * ============================================================
+         * RENDERING
+         * ============================================================
+         */
+
+        function draw() {
+
+            sphereOffsetX +=
+                (targetOffsetX - sphereOffsetX) * 0.08;
+
+            sphereOffsetY +=
+                (targetOffsetY - sphereOffsetY) * 0.08;
+            ctx.clearRect(0, 0, width, height);
+
+            const centerX =
+                width / 2 + sphereOffsetX;
+
+            const centerY =
+                height / 2 + sphereOffsetY;
+
+            // Smooth motion
+            rotationX += (targetRotationX - rotationX) * 0.06;
+            rotationY += (targetRotationY - rotationY) * 0.06;
+
+            sphereRadius += (targetSphereRadius - sphereRadius) * 0.08;
+
+            explosion *= 0.93;
+
+            sphereOffsetX +=
+                (targetOffsetX - sphereOffsetX) * 0.08;
+
+            sphereOffsetY +=
+                (targetOffsetY - sphereOffsetY) * 0.08;
+            // Smooth color
+            currentColor.h += (targetColor.h - currentColor.h) * 0.08;
+            currentColor.s += (targetColor.s - currentColor.s) * 0.08;
+            currentColor.l += (targetColor.l - currentColor.l) * 0.08;
+
+            const rendered = [];
+
+            for (const p of particles) {
+
+                let point = rotatePoint(
+                    p.x,
+                    p.y,
+                    p.z,
+                    rotationX,
+                    rotationY
+                );
+
+                /*
+                 * Organic breathing motion
+                 */
+                const time = performance.now() * 0.001;
+
+                const pulse =
+                    1 +
+                    Math.sin(time * 1.2 + p.noise) * 0.025;
+
+                let x = point.x * sphereRadius * pulse;
+                let y = point.y * sphereRadius * pulse;
+                let z = point.z * sphereRadius * pulse;
+
+                /*
+                 * Explosion
+                 */
+                if (explosion > 0.001) {
+
+                    const explosionMultiplier =
+                        explosion * 1000;
+
+                    x += p.explosionX * explosionMultiplier;
+                    y += p.explosionY * explosionMultiplier;
+                    z += p.explosionZ * explosionMultiplier;
+                }
+
+
+
+                const perspective = 700 / Math.max(250, 700 - z);
+
+                const screenX =
+                    centerX + x * perspective;
+
+                const screenY =
+                    centerY + y * perspective;
+
+                const particleSize =
+                    Math.max(
+                        0.5,
+                        p.size * perspective
+                    );
+
+                const depthAlpha =
+                    0.35 + (0.65 * Math.max(0, Math.min(1, (z + sphereRadius) / (sphereRadius * 2))
+                    )
+                    );
+
+                rendered.push({
+                    x: screenX,
+                    y: screenY,
+                    z,
+                    size: particleSize,
+                    alpha: p.alpha * depthAlpha
+                });
+            }
+
+            // Back-to-front depth sorting
+            rendered.sort((a, b) => a.z - b.z);
+
+            for (const p of rendered) {
+
+                ctx.beginPath();
+
+                ctx.arc(
+                    p.x,
+                    p.y,
+                    p.size,
+                    0,
+                    Math.PI * 2
+                );
+
+                ctx.fillStyle =
+                    `hsla(
+        ${currentColor.h},
+        ${currentColor.s}%,
+        ${currentColor.l}%,
+        ${Math.max(0.45, p.alpha)}
+    )`;
+
+                ctx.fill();
+            }
+
+            requestAnimationFrame(draw);
+        }
+
+        draw();
+
+        /*
+         * ============================================================
+         * HAND TRACKING
+         * ============================================================
+         */
+
+        let handsDetected = 0;
+
+        let pinchActive = false;
+        let pinchStartTime = 0;
+        let charge = 0;
+
+        let previousHandX = null;
+        let previousHandY = null;
+
+        let previousTwoHandDistance = null;
+
+        function distance(a, b) {
+            return Math.sqrt(
+                Math.pow(a.x - b.x, 2) +
+                Math.pow(a.y - b.y, 2)
+            );
+        }
+
+        function isPinching(landmarks) {
+
+            const thumb = landmarks[4];
+            const index = landmarks[8];
+
+            const pinchDistance =
+                distance(thumb, index);
+
+            return pinchDistance < 0.065;
+        }
+
+        function countFingers(landmarks) {
+
+            let count = 0;
+
+            /*
+             * Thumb
+             */
+            if (
+                Math.abs(landmarks[4].x - landmarks[3].x) > 0.06
+            ) {
+                count++;
+            }
+
+            /*
+             * Other fingers
+             */
+            const fingerPairs = [
+                [8, 6],
+                [12, 10],
+                [16, 14],
+                [20, 18]
+            ];
+
+            for (const [tip, joint] of fingerPairs) {
+                if (landmarks[tip].y < landmarks[joint].y) {
+                    count++;
+                }
+            }
+
+            return count;
+        }
+
+        function updateColorFromFingerCount(count) {
+
+            const colors = [
+                0,      // 0 fingers
+                30,     // 1 finger
+                60,     // 2 fingers
+                140,    // 3 fingers
+                200,    // 4 fingers
+                300     // 5 fingers
+            ];
+
+            targetColor.h = colors[count] ?? 210;
+            targetColor.s = 80;
+            targetColor.l = 72;
+        }
+
+        function triggerExplosion() {
+
+            explosion = 1;
+
+            // Give each particle a new random direction
+            for (const p of particles) {
+
+                const length = Math.sqrt(
+                    p.explosionX * p.explosionX +
+                    p.explosionY * p.explosionY +
+                    p.explosionZ * p.explosionZ
+                );
+
+                p.explosionX /= length || 1;
+                p.explosionY /= length || 1;
+                p.explosionZ /= length || 1;
+            }
+
+            // Sphere temporarily expands dramatically
+            targetSphereRadius = Math.min(width, height) * 0.36;
+
+            setTimeout(() => {
+                targetSphereRadius =
+                    Math.min(width, height) * 0.25;
+            }, 500);
+        }
+
+        function handleHands(results) {
+
+            const detectedHands =
+                results.multiHandLandmarks || [];
+
+            handsDetected = detectedHands.length;
+
+            if (handsDetected === 0) {
+
+                status.classList.remove("active");
+                statusText.textContent = "Camera active";
+
+                previousHandX = null;
+                previousHandY = null;
+                previousTwoHandDistance = null;
+
+                chargeContainer.classList.remove("visible");
+
+                return;
+            }
+
+            status.classList.add("active");
+            statusText.textContent =
+                handsDetected === 1
+                    ? "One hand detected"
+                    : "Two hands detected";
+
+            hint.classList.add("hidden");
+
+            /*
+             * ========================================================
+             * ONE HAND
+             * Move hand → move sphere
+             * Hand movement → rotation
+             * ========================================================
+             */
+
+            if (handsDetected === 1) {
+
+                const hand = detectedHands[0];
+
+                const palm = hand[9];
+
+                const handX = 1 - palm.x;
+                const handY = palm.y;
+
+                // Move sphere with hand
+                targetOffsetX =
+                    (handX - 0.5) * width * 0.45;
+
+                targetOffsetY =
+                    (handY - 0.5) * height * 0.45;
+
+                // Instead of changing canvas center,
+                // use rotation as the main gesture response.
+                targetRotationY =
+                    (handX - 0.5) * 2.8;
+
+                targetRotationX =
+                    (handY - 0.5) * 2.8;
+
+                /*
+                 * Finger count changes color
+                 */
+
+                const fingers =
+                    countFingers(hand);
+
+                updateColorFromFingerCount(fingers);
+
+                /*
+                 * Pinch and hold
+                 */
+
+                const currentlyPinching =
+                    isPinching(hand);
+
+                if (currentlyPinching) {
+
+                    if (!pinchActive) {
+                        pinchActive = true;
+                        pinchStartTime = performance.now();
+                    }
+
+                    const elapsed =
+                        performance.now() - pinchStartTime;
+
+                    charge =
+                        Math.min(1, elapsed / 1800);
+
+                    chargeContainer.classList.add("visible");
+
+                    chargeRing.style.setProperty(
+                        "--charge",
+                        `${charge * 100}%`
+                    );
+
+                    if (charge >= 1) {
+                        chargeRing.style.filter =
+                            "drop-shadow(0 0 12px white)";
+                    }
+
+                } else {
+
+                    if (pinchActive) {
+
+                        if (charge > 0.15) {
+                            triggerExplosion();
+                        }
+
+                        pinchActive = false;
+                        charge = 0;
+
+                        chargeRing.style.setProperty(
+                            "--charge",
+                            "0%"
+                        );
+
+                        chargeRing.style.filter = "none";
+
+                        setTimeout(() => {
+                            if (!pinchActive) {
+                                chargeContainer.classList.remove(
+                                    "visible"
+                                );
+                            }
+                        }, 300);
+                    }
+                }
+            }
+
+            /*
+             * ========================================================
+             * TWO HANDS
+             * Spread apart → grow
+             * Bring together → shrink
+             * ========================================================
+             */
+
+            if (handsDetected >= 2) {
+
+                const handA = detectedHands[0][9];
+                const handB = detectedHands[1][9];
+
+                const handDistance =
+                    distance(handA, handB);
+
+                if (previousTwoHandDistance === null) {
+                    previousTwoHandDistance =
+                        handDistance;
+                }
+
+                /*
+                 * Normalize distance.
+                 * Typical webcam normalized distance:
+                 * 0.15 = close
+                 * 0.75 = spread
+                 */
+
+                const normalized =
+                    Math.max(
+                        0,
+                        Math.min(
+                            1,
+                            (handDistance - 0.12) / 0.55
+                        )
+                    );
+
+                const minRadius =
+                    Math.min(width, height) * 0.18;
+
+                const maxRadius =
+                    Math.min(width, height) * 0.34;
+
+                targetSphereRadius =
+                    minRadius +
+                    (maxRadius - minRadius) *
+                    normalized;
+
+                previousTwoHandDistance =
+                    handDistance;
+
+                /*
+                 * Finger count from both hands
+                 */
+
+                const fingersA =
+                    countFingers(detectedHands[0]);
+
+                const fingersB =
+                    countFingers(detectedHands[1]);
+
+                const totalFingers =
+                    Math.min(5, fingersA + fingersB);
+
+                updateColorFromFingerCount(
+                    totalFingers
+                );
+            }
+        }
+
+        /*
+         * ============================================================
+         * MEDIAPIPE INITIALIZATION
+         * ============================================================
+         */
+
+        const hands = new Hands({
+            locateFile: (file) => {
+                return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+            }
+        });
+
+        hands.setOptions({
+            maxNumHands: 2,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.65,
+            minTrackingConfidence: 0.65
+        });
+
+        hands.onResults(handleHands);
+
+        let camera = null;
+        let stream = null;
+        let webcamEnabled = false;
+
+        async function startCamera() {
+
+            try {
+
+                stream =
+                    await navigator.mediaDevices
+                        .getUserMedia({
+                            video: {
+                                width: {
+                                    ideal: 1280
+                                },
+                                height: {
+                                    ideal: 720
+                                },
+                                facingMode: "user"
+                            },
+                            audio: false
+                        });
+
+                video.srcObject = stream;
+
+                webcamEnabled = true;
+
+                document.body.classList.add(
+                    "webcam-visible"
+                );
+
+                cameraButton.textContent =
+                    "Hide Webcam";
+
+                statusText.textContent =
+                    "Camera active";
+
+                cameraButton.style.borderColor =
+                    "rgba(255,255,255,0.4)";
+
+                /*
+                 * Process video frames manually.
+                 */
+
+                async function processFrame() {
+
+                    if (
+                        webcamEnabled &&
+                        video.readyState >= 2
+                    ) {
+                        await hands.send({
+                            image: video
+                        });
+                    }
+
+                    requestAnimationFrame(
+                        processFrame
+                    );
+                }
+
+                processFrame();
+
+            } catch (error) {
+
+                console.error(error);
+
+                statusText.textContent =
+                    "Camera permission required";
+
+                alert(
+                    "Please allow webcam access to enable hand tracking."
+                );
+            }
+        }
+
+        function stopCamera() {
+
+            webcamEnabled = false;
+
+            if (stream) {
+
+                stream
+                    .getTracks()
+                    .forEach(track => track.stop());
+
+                stream = null;
+            }
+
+            video.srcObject = null;
+
+            document.body.classList.remove(
+                "webcam-visible"
+            );
+
+            cameraButton.textContent =
+                "Enable Webcam";
+
+            status.classList.remove(
+                "active"
+            );
+
+            statusText.textContent =
+                "Camera inactive";
+
+            chargeContainer.classList.remove(
+                "visible"
+            );
+        }
+
+        cameraButton.addEventListener(
+            "click",
+            () => {
+
+                if (webcamEnabled) {
+                    stopCamera();
+                } else {
+                    startCamera();
+                }
+            }
+        );
+
+        /*
+         * ============================================================
+         * RESIZE
+         * ============================================================
+         */
+
+        window.addEventListener(
+            "resize",
+            () => {
+
+                width =
+                    window.innerWidth;
+
+                height =
+                    window.innerHeight;
+
+                dpr =
+                    Math.min(
+                        window.devicePixelRatio || 1,
+                        2
+                    );
+
+                canvas.width =
+                    width * dpr;
+
+                canvas.height =
+                    height * dpr;
+
+                ctx.setTransform(
+                    dpr,
+                    0,
+                    0,
+                    dpr,
+                    0,
+                    0
+                );
+
+                targetSphereRadius =
+                    Math.min(width, height) * 0.25;
+            }
+        );
+
+    </script>
+
+</body>
+
+</html>
