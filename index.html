@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Particle Sphere</title>
+    <title>VYRA : Visual Yielding Reactive Atmosphere</title>
 
     <style>
         :root {
@@ -124,12 +124,13 @@
 
         .controls {
             position: absolute;
-            bottom: 30px;
-            left: 34px;
-            right: 34px;
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-end;
+    bottom: 30px;
+    left: 34px;
+    right: 34px;
+
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
         }
 
         .instructions {
@@ -138,6 +139,32 @@
             font-size: 11px;
             line-height: 1.8;
             letter-spacing: 0.04em;
+        }
+
+        .creator-credit {
+            position: absolute;
+            right: 0;
+            bottom: -20px;
+
+            color: var(--muted);
+            font-size: 10px;
+            letter-spacing: 0.08em;
+        }
+
+        .creator-credit span {
+            color: var(--text);
+            
+        }
+
+        .creator-credit a {
+            color: var(--text);
+            text-decoration: none;
+            pointer-events: auto;
+            transition: opacity 0.25s ease;
+        }
+
+        .creator-credit a:hover {
+            opacity: 0.6;
         }
 
         .instructions span {
@@ -216,6 +243,37 @@
             z-index: 2;
         }
 
+        .camera-section {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 10px;
+        }
+
+        .creator-credit {
+            pointer-events: auto;
+            color: var(--muted);
+            font-size: 9px;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+        }
+
+        .creator-credit span {
+            color: var(--text);
+            font-size: 11px;
+        }
+
+        .creator-credit a {
+            color: var(--text);
+            text-decoration: none;
+            pointer-events: auto;
+            transition: opacity 0.25s ease;
+        }
+
+        .creator-credit a:hover {
+            opacity: 0.6;
+        }
+
         .hint.hidden {
             opacity: 0;
         }
@@ -259,7 +317,7 @@
     <div class="overlay">
 
         <header>
-            <h1>Particle<br>Sphere</h1>
+            <h1>VYRA</h1>
             <div class="subtitle">Gesture / Matter / Motion</div>
         </header>
 
@@ -280,9 +338,21 @@
                 <div><span>FINGERS</span> — change color</div>
             </div>
 
-            <button id="cameraButton">
-                Enable Webcam
-            </button>
+            <div class="camera-section">
+
+                <button id="cameraButton">
+                    Enable Webcam
+                </button>
+
+                <div class="creator-credit">
+                    Made with <span>♥</span> by
+                    <a href="https://github.com/vedantikakandya" target="_blank" rel="noopener noreferrer">
+                        Vedantika
+                    </a>
+                </div>
+
+            </div>
+
         </div>
 
     </div>
@@ -307,6 +377,27 @@
 
         const PARTICLE_COUNT = 3000;
 
+        let energyFieldX = 0;
+        let energyFieldY = 0;
+        let lifeForce = 0;
+        let lifeForceTarget = 1;
+
+        let handsDetected = 0;
+
+        let pinchActive = false;
+        let pinchStartTime = 0;
+        let charge = 0;
+
+        let previousHandX = null;
+        let previousHandY = null;
+
+        let handVelocityX = 0;
+        let handVelocityY = 0;
+
+        let handEnergy = 0;
+        let twoHandEnergy = 0;
+
+        let previousTwoHandDistance = null;
         const canvas = document.getElementById("canvas");
         const ctx = canvas.getContext("2d");
 
@@ -336,6 +427,8 @@
          */
 
         const particles = [];
+
+
 
         let sphereRadius = Math.min(width, height) * 0.25;
         let targetSphereRadius = sphereRadius;
@@ -391,11 +484,30 @@
                     x,
                     y,
                     z,
+                    trail: [],
+
+                    // Current movement
+                    currentX: x,
+                    currentY: y,
+                    currentZ: z,
+
+                    // Velocity
+                    vx: 0,
+                    vy: 0,
+                    vz: 0,
 
                     size: random(0.45, 1.6),
                     alpha: random(0.45, 1),
 
                     noise: random(0, Math.PI * 2),
+
+                    // Each particle has its own movement rhythm
+                    phaseX: random(0, Math.PI * 2),
+                    phaseY: random(0, Math.PI * 2),
+                    phaseZ: random(0, Math.PI * 2),
+
+                    movementSpeed: random(0.4, 1.2),
+                    movementAmount: random(2, 8),
 
                     explosionX: random(-1, 1),
                     explosionY: random(-1, 1),
@@ -466,17 +578,15 @@
 
             explosion *= 0.93;
 
-            sphereOffsetX +=
-                (targetOffsetX - sphereOffsetX) * 0.08;
-
-            sphereOffsetY +=
-                (targetOffsetY - sphereOffsetY) * 0.08;
             // Smooth color
             currentColor.h += (targetColor.h - currentColor.h) * 0.08;
             currentColor.s += (targetColor.s - currentColor.s) * 0.08;
             currentColor.l += (targetColor.l - currentColor.l) * 0.08;
 
             const rendered = [];
+
+            applyHandEnergy();
+            drawEnergyField();
 
             for (const p of particles) {
 
@@ -497,10 +607,122 @@
                     1 +
                     Math.sin(time * 1.2 + p.noise) * 0.025;
 
-                let x = point.x * sphereRadius * pulse;
-                let y = point.y * sphereRadius * pulse;
-                let z = point.z * sphereRadius * pulse;
+                const targetX =
+                    point.x *
+                    sphereRadius *
+                    pulse;
 
+                const targetY =
+                    point.y *
+                    sphereRadius *
+                    pulse;
+
+                const targetZ =
+                    point.z *
+                    sphereRadius *
+                    pulse;
+
+
+                // Natural movement force
+                const organicX =
+                    Math.sin(
+                        time * p.movementSpeed +
+                        p.phaseX
+                    ) *
+                    p.movementAmount;
+
+                const organicY =
+                    Math.sin(
+                        time * p.movementSpeed * 0.8 +
+                        p.phaseY
+                    ) *
+                    p.movementAmount;
+
+                const organicZ =
+                    Math.sin(
+                        time * p.movementSpeed * 1.2 +
+                        p.phaseZ
+                    ) *
+                    p.movementAmount;
+
+                // ===============================
+                // GLOBAL LIFE FORCE
+                // ===============================
+
+                const lifeWave =
+                    Math.sin(
+                        time * 0.8 +
+                        p.x * 3 +
+                        p.y * 2
+                    );
+
+                const lifeWave2 =
+                    Math.cos(
+                        time * 0.6 +
+                        p.z * 4
+                    );
+
+                const globalForceX =
+                    lifeWave *
+                    4 *
+                    lifeForce;
+
+                const globalForceY =
+                    lifeWave2 *
+                    4 *
+                    lifeForce;
+
+                const globalForceZ =
+                    Math.sin(
+                        time * 0.7 +
+                        p.x * 2 +
+                        p.z * 3
+                    ) *
+                    4 *
+                    lifeForce;
+
+
+                // Spring force pulling particle back
+                // toward its position on the sphere
+                const springStrength = 0.015;
+
+                p.vx +=
+                    (targetX + organicX + globalForceX - p.currentX)
+                    * springStrength;
+
+                p.vy +=
+                    (targetY + organicY + globalForceY - p.currentY)
+                    * springStrength;
+
+                p.vz +=
+                    (targetZ + organicZ + globalForceZ - p.currentZ)
+                    * springStrength;
+
+
+                // Damping
+                p.vx *= 0.92;
+                p.vy *= 0.92;
+                p.vz *= 0.92;
+
+
+                // Update position
+                p.currentX += p.vx;
+                p.currentY += p.vy;
+                p.currentZ += p.vz;
+
+
+                // Use actual particle position
+                let x = p.currentX;
+                let y = p.currentY;
+                let z = p.currentZ;
+
+                const rotatedPoint = rotatePoint(
+                    x,
+                    y,
+                    z,
+                    0,
+                    0
+                );
                 /*
                  * Explosion
                  */
@@ -516,14 +738,43 @@
 
 
 
-                const perspective = 700 / Math.max(250, 700 - z);
+                const perspective =
+                    700 / Math.max(250, 700 - z);
 
                 const screenX =
-                    centerX + x * perspective;
+                    centerX +
+                    x * perspective;
 
                 const screenY =
-                    centerY + y * perspective;
+                    centerY +
+                    y * perspective;
 
+                // ===============================
+                // PARTICLE TRAIL
+                // ===============================
+
+                const speed = Math.sqrt(
+                    p.vx * p.vx +
+                    p.vy * p.vy +
+                    p.vz * p.vz
+                );
+
+                // Current position trail mein add karo
+                p.trail.push({
+                    x: screenX,
+                    y: screenY
+                });
+
+                // Speed ke according trail length
+                const trailLength = Math.min(
+                    4,
+                    Math.max(2, Math.floor(speed * 3))
+                );
+
+                // Purane points remove karo
+                while (p.trail.length > trailLength) {
+                    p.trail.shift();
+                }
                 const particleSize =
                     Math.max(
                         0.5,
@@ -540,7 +791,8 @@
                     y: screenY,
                     z,
                     size: particleSize,
-                    alpha: p.alpha * depthAlpha
+                    alpha: p.alpha * depthAlpha,
+                    trail: p.trail
                 });
             }
 
@@ -549,6 +801,38 @@
 
             for (const p of rendered) {
 
+                // ===============================
+                // DRAW PARTICLE TRAIL
+                // ===============================
+
+                if (p.trail.length > 1) {
+
+                    ctx.beginPath();
+
+                    ctx.moveTo(
+                        p.trail[0].x,
+                        p.trail[0].y
+                    );
+
+                    for (
+                        let t = 1;
+                        t < p.trail.length;
+                        t++
+                    ) {
+                        ctx.lineTo(
+                            p.trail[t].x,
+                            p.trail[t].y
+                        );
+                    }
+
+                    ctx.strokeStyle =
+                        `rgba(255, 255, 255, ${p.alpha * 0.18})`;
+
+                    ctx.lineWidth =
+                        Math.max(0.4, p.size * 0.5);
+
+                    ctx.stroke();
+                }
                 ctx.beginPath();
 
                 ctx.arc(
@@ -558,18 +842,14 @@
                     0,
                     Math.PI * 2
                 );
-
                 ctx.fillStyle =
-                    `hsla(
-        ${currentColor.h},
-        ${currentColor.s}%,
-        ${currentColor.l}%,
-        ${Math.max(0.45, p.alpha)}
-    )`;
+                    `hsla(${currentColor.h},${currentColor.s}%, ${currentColor.l}%,${Math.max(0.45, p.alpha)})`;
 
                 ctx.fill();
             }
 
+            drawHandEnergyField();
+            twoHandEnergy *= 0.94;
             requestAnimationFrame(draw);
         }
 
@@ -581,16 +861,7 @@
          * ============================================================
          */
 
-        let handsDetected = 0;
 
-        let pinchActive = false;
-        let pinchStartTime = 0;
-        let charge = 0;
-
-        let previousHandX = null;
-        let previousHandY = null;
-
-        let previousTwoHandDistance = null;
 
         function distance(a, b) {
             return Math.sqrt(
@@ -685,6 +956,327 @@
             }, 500);
         }
 
+        function applyHandEnergy() {
+
+            if (
+                previousHandX === null ||
+                previousHandY === null ||
+                handEnergy < 0.001
+            ) {
+                return;
+            }
+
+            /*
+             * ============================================
+             * HAND POSITION IN SCREEN SPACE
+             * ============================================
+             */
+
+            const handScreenX =
+                previousHandX * width;
+
+            const handScreenY =
+                previousHandY * height;
+
+            energyFieldX = handScreenX;
+            energyFieldY = handScreenY;
+
+            /*
+             * ============================================
+             * CONVERT HAND TO SPHERE SPACE
+             * ============================================
+             */
+
+            const handSphereX =
+                handScreenX -
+                (width / 2 + sphereOffsetX);
+
+            const handSphereY =
+                handScreenY -
+                (height / 2 + sphereOffsetY);
+
+
+            /*
+             * ============================================
+             * ENERGY SETTINGS
+             * ============================================
+             */
+
+            const influenceRadius =
+                sphereRadius * 0.42;
+
+            const energyStrength =
+                handEnergy * 2.5;
+
+
+            /*
+             * ============================================
+             * APPLY FIELD TO PARTICLES
+             * ============================================
+             */
+
+            for (const p of particles) {
+
+                const dx =
+                    p.currentX - handSphereX;
+
+                const dy =
+                    p.currentY - handSphereY;
+
+                const distance =
+                    Math.sqrt(
+                        dx * dx +
+                        dy * dy
+                    );
+
+
+                if (
+                    distance < influenceRadius &&
+                    distance > 0.001
+                ) {
+
+                    /*
+                     * Strong in the center,
+                     * smoothly fades toward edge
+                     */
+
+                    const normalizedDistance =
+                        distance / influenceRadius;
+
+                    const influence =
+                        Math.pow(
+                            1 - normalizedDistance,
+                            3
+                        );
+
+                    const force =
+                        influence *
+                        influence *
+                        energyStrength;
+
+
+                    /*
+                     * Push particles in direction
+                     * of hand movement
+                     */
+
+                    p.vx +=
+                        handVelocityX *
+                        force *
+                        35;
+
+                    p.vy +=
+                        handVelocityY *
+                        force *
+                        35;
+
+
+                    /*
+                     * Slight outward energy pressure
+                     */
+
+                    p.vx +=
+                        (dx / distance) *
+                        force *
+                        2.5;
+
+                    p.vy +=
+                        (dy / distance) *
+                        force *
+                        2.5;
+                }
+            }
+
+        }
+
+        function drawHandEnergyField() {
+
+            if (
+                previousHandX === null ||
+                previousHandY === null ||
+                handEnergy < 0.01
+            ) {
+                return;
+            }
+
+            /*
+             * Convert hand position to screen coordinates
+             */
+
+            const handScreenX =
+                previousHandX * width;
+
+            const handScreenY =
+                previousHandY * height;
+
+
+            /*
+             * Field size
+             */
+
+            const fieldRadius =
+                sphereRadius * 0.42;
+
+
+            /*
+             * Energy intensity
+             */
+
+            const intensity =
+                handEnergy;
+
+
+            /*
+             * Outer glow
+             */
+
+            const gradient =
+                ctx.createRadialGradient(
+                    handScreenX,
+                    handScreenY,
+                    fieldRadius * 0.05,
+
+                    handScreenX,
+                    handScreenY,
+                    fieldRadius
+                );
+
+            gradient.addColorStop(
+                0,
+                `hsla(
+            ${currentColor.h},
+            ${currentColor.s}%,
+            ${currentColor.l}%,
+            ${0.12 * intensity}
+        )`
+            );
+
+            gradient.addColorStop(
+                0.45,
+                `hsla(
+            ${currentColor.h},
+            ${currentColor.s}%,
+            ${currentColor.l}%,
+            ${0.05 * intensity}
+        )`
+            );
+
+            gradient.addColorStop(
+                1,
+                `hsla(
+            ${currentColor.h},
+            ${currentColor.s}%,
+            ${currentColor.l}%,
+            0
+        )`
+            );
+
+
+            ctx.beginPath();
+
+            ctx.arc(
+                handScreenX,
+                handScreenY,
+                fieldRadius,
+                0,
+                Math.PI * 2
+            );
+
+            ctx.fillStyle =
+                gradient;
+
+            ctx.fill();
+
+
+            /*
+             * ====================================
+             * SUBTLE ENERGY RING
+             * ====================================
+             */
+
+            const pulse =
+                Math.sin(
+                    performance.now() * 0.006
+                ) * 4;
+
+
+            ctx.beginPath();
+
+            ctx.arc(
+                handScreenX,
+                handScreenY,
+                fieldRadius * 0.72 + pulse,
+                0,
+                Math.PI * 2
+            );
+
+            ctx.strokeStyle =
+                `hsla(
+            ${currentColor.h},
+            ${currentColor.s}%,
+            ${currentColor.l}%,
+            ${0.12 * intensity}
+        )`;
+
+            ctx.lineWidth =
+                1;
+
+            ctx.stroke();
+        }
+
+
+        function drawEnergyField() {
+
+            if (
+                previousHandX === null ||
+                handEnergy < 0.01
+            ) {
+                return;
+            }
+
+            const radius =
+                sphereRadius * 0.42;
+
+            const gradient =
+                ctx.createRadialGradient(
+                    energyFieldX,
+                    energyFieldY,
+                    0,
+                    energyFieldX,
+                    energyFieldY,
+                    radius
+                );
+
+            gradient.addColorStop(
+                0,
+                `rgba(255, 255, 255, ${handEnergy * 0.12})`
+            );
+
+            gradient.addColorStop(
+                0.35,
+                `rgba(255, 255, 255, ${handEnergy * 0.05})`
+            );
+
+            gradient.addColorStop(
+                1,
+                `rgba(255, 255, 255, 0)`
+            );
+
+            ctx.beginPath();
+
+            ctx.arc(
+                energyFieldX,
+                energyFieldY,
+                radius,
+                0,
+                Math.PI * 2
+            );
+
+            ctx.fillStyle = gradient;
+
+            ctx.fill();
+        }
+
         function handleHands(results) {
 
             const detectedHands =
@@ -696,10 +1288,14 @@
 
                 status.classList.remove("active");
                 statusText.textContent = "Camera active";
-
                 previousHandX = null;
                 previousHandY = null;
-                previousTwoHandDistance = null;
+
+                handVelocityX = 0;
+                handVelocityY = 0;
+                handEnergy = 0;
+
+
 
                 chargeContainer.classList.remove("visible");
 
@@ -731,6 +1327,43 @@
                 const handX = 1 - palm.x;
                 const handY = palm.y;
 
+                // ===============================
+                // HAND VELOCITY
+                // ===============================
+
+                if (
+                    previousHandX !== null &&
+                    previousHandY !== null
+                ) {
+
+                    const rawVelocityX =
+                        handX - previousHandX;
+
+                    const rawVelocityY =
+                        handY - previousHandY;
+
+                    handVelocityX +=
+                        (rawVelocityX - handVelocityX) * 0.35;
+
+                    handVelocityY +=
+                        (rawVelocityY - handVelocityY) * 0.35;
+
+                    const velocity =
+                        Math.sqrt(
+                            handVelocityX * handVelocityX +
+                            handVelocityY * handVelocityY
+                        );
+
+                    const targetEnergy =
+                        Math.min(1, velocity * 20);
+
+                    handEnergy +=
+                        (targetEnergy - handEnergy) * 0.15;
+                }
+
+                // Remember current hand position
+                previousHandX = handX;
+                previousHandY = handY;
                 // Move sphere with hand
                 targetOffsetX =
                     (handX - 0.5) * width * 0.45;
@@ -832,17 +1465,48 @@
                 const handDistance =
                     distance(handA, handB);
 
+
+                // ============================================
+                // DISTANCE CHANGE
+                // ============================================
+
                 if (previousTwoHandDistance === null) {
+
                     previousTwoHandDistance =
                         handDistance;
+
                 }
 
+
+                const distanceChange =
+                    handDistance -
+                    previousTwoHandDistance;
+
+
                 /*
-                 * Normalize distance.
-                 * Typical webcam normalized distance:
-                 * 0.15 = close
-                 * 0.75 = spread
+                 * Positive = hands moving apart
+                 * Negative = hands moving together
                  */
+
+                const twoHandVelocity =
+                    distanceChange * 20;
+
+
+                twoHandEnergy +=
+                    (
+                        Math.min(
+                            1,
+                            Math.abs(twoHandVelocity)
+                        )
+                        -
+                        twoHandEnergy
+                    )
+                    * 0.15;
+
+
+                // ============================================
+                // SPHERE SIZE
+                // ============================================
 
                 const normalized =
                     Math.max(
@@ -853,36 +1517,115 @@
                         )
                     );
 
+
                 const minRadius =
                     Math.min(width, height) * 0.18;
 
                 const maxRadius =
                     Math.min(width, height) * 0.34;
 
+
                 targetSphereRadius =
                     minRadius +
-                    (maxRadius - minRadius) *
-                    normalized;
+                    (maxRadius - minRadius)
+                    * normalized;
+
+
+                // ============================================
+                // POWERFUL PARTICLE RESPONSE
+                // ============================================
+
+                const handCenterX =
+                    (handA.x + handB.x) / 2;
+
+                const handCenterY =
+                    (handA.y + handB.y) / 2;
+
+
+                const centerX =
+                    (handCenterX - 0.5) * 2;
+
+                const centerY =
+                    (handCenterY - 0.5) * 2;
+
+
+                for (const p of particles) {
+
+                    const dx =
+                        p.currentX - centerX;
+
+                    const dy =
+                        p.currentY - centerY;
+
+
+                    const particleDistance =
+                        Math.sqrt(
+                            dx * dx +
+                            dy * dy
+                        );
+
+
+                    if (
+                        particleDistance > 0.001
+                    ) {
+
+                        const directionX =
+                            dx / particleDistance;
+
+                        const directionY =
+                            dy / particleDistance;
+
+
+                        /*
+                         * Hands moving apart
+                         * → particles expand outward
+                         */
+
+                        if (distanceChange > 0) {
+
+                            const expansionForce =
+                                twoHandEnergy *
+                                distanceChange *
+                                180;
+
+
+                            p.vx +=
+                                directionX *
+                                expansionForce;
+
+                            p.vy +=
+                                directionY *
+                                expansionForce;
+                        }
+
+
+                        /*
+                         * Hands moving together
+                         * → particles compress inward
+                         */
+
+                        else if (distanceChange < 0) {
+
+                            const compressionForce =
+                                twoHandEnergy *
+                                distanceChange *
+                                80;
+
+
+                            p.vx +=
+                                directionX *
+                                compressionForce;
+
+                            p.vy +=
+                                directionY *
+                                compressionForce;
+                        }
+                    }
+                }
+
 
                 previousTwoHandDistance =
                     handDistance;
-
-                /*
-                 * Finger count from both hands
-                 */
-
-                const fingersA =
-                    countFingers(detectedHands[0]);
-
-                const fingersB =
-                    countFingers(detectedHands[1]);
-
-                const totalFingers =
-                    Math.min(5, fingersA + fingersB);
-
-                updateColorFromFingerCount(
-                    totalFingers
-                );
             }
         }
 
